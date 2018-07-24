@@ -8,11 +8,28 @@
         public $y_arr = []; //kontener tablicowy na drugą liczbę
         public $result = false; //wynik działania
         public $pyramid;
+        public $sign = '';
         public $suma = array();
         public $pyramid_bottom = array();
+        public $output = array();
 
+        //rozmiar kontenera liczony w zależności od tego czy system 32 - bitowy czy 64 - bitowy
         public function getContainerSize() {
             $this->container = PHP_INT_SIZE == 8 ? 9 : 4;
+        }
+
+        /* sprawdzanie znaku, żeby działało dla liczb ujemnych */
+        public function checkSigns() {
+            if (
+                (strpos($this->x, '-') !== false && strpos($this->y, '-') === false) ||
+                (strpos($this->x, '-') === false && strpos($this->y, '-') !== false)
+                ) {
+                $this->sign = '-';
+            } else {
+                $this->sign = '';
+            }
+            $this->x = preg_replace('/\D/', '', $this->x);
+            $this->y = preg_replace('/\D/', '', $this->y);
         }
 
         public function simpleMultiply() {
@@ -66,17 +83,27 @@
             $this->y_arr = str_split($y, $this->container);
         }
 
+        /**
+         * Funkcja wykonuje serie mnożeń i dodawań w dwóch zagnieżdżonych pętlach
+         * Ograniczenie jakie występuję to przypadek kiedy po dodawaniu w słupku
+         * dla pojedynczych cyfr dostaniemy liczbę większą niż pojemność bitowa
+         * dla danego systemu operacyjnego tj. 2^32-1 dla 32-bitowego lub 2^64-1
+         * dla 64 bitowego systemu operacyjnego
+         */
         public function processNumbers() {
             //zerowanie zmiennych i ustawianie początkowych wartości
             $this->pyramid = '';
             $this->pyramid_bottom = array();
+            $this->suma = array();
+            $carry = array();
             $licznik = count($this->x_arr);
             $pyramid_length = 0;
+            $suma_temp = array_fill(0, $licznik*$this->container*2, '0');
+            $pyramid_flag = true;
             for ($i = 0; $i < $licznik; $i++) {
                 $gora = '';
                 $dol = '';
                 for ($j = 0; $j+$i < $licznik; $j++) {
-                    //echo 'i : ' . $i . PHP_EOL;
                     if ($i == 0) {
                         $this->pyramid .= str_pad($this->x_arr[$j] * $this->y_arr[$j+$i], $this->container*2, '0', STR_PAD_LEFT);
                         $pyramid_length = strlen($this->pyramid);
@@ -87,17 +114,36 @@
                     }    
                 }
                 if ($i > 0) {
-                    $this->pyramid_bottom[] = str_pad($gora, $pyramid_length, '0', STR_PAD_BOTH);
-                    $this->pyramid_bottom[] = str_pad($dol, $pyramid_length, '0', STR_PAD_BOTH);
-                    //print_r($this->pyramid);
+                    $this->pyramid_bottom[] = $gora = str_pad($gora, $pyramid_length, '0', STR_PAD_BOTH);
+                    $this->pyramid_bottom[] = $dol = str_pad($dol, $pyramid_length, '0', STR_PAD_BOTH);
+                    
+                    for ($c = $pyramid_length - 1, $d = 0; $c >= 0; $c--, $d++) {
+                        if ($pyramid_flag) {
+                            $suma_temp[$d] += $this->pyramid[$c];
+                        } 
+                        $suma_temp[$d] += $gora[$c];
+                        $suma_temp[$d] += $dol[$c];
+
+                        //jesli ostatni obieg petli
+                        if ($i == ($licznik - 1)) {
+                            if ($d > 0) {
+                                $suma_temp[$d] += $carry[$d - 1] % 10; //dodajemy cyfre z przeniesienia
+                            } 
+                            
+                            $carry[$d] = intval($suma_temp[$d] / 10);
+                            $this->suma[$d] = $suma_temp[$d] % 10;
+                        }
+                    }
+                    
+                    $pyramid_flag = false;
                 }
             }
             
-            //echo 'kontener ' . $this->container . PHP_EOL;
-            echo $this->pyramid;
+            array_unshift($this->pyramid_bottom, $this->pyramid);
             print_r($this->pyramid_bottom);
-            print_r($this->x_arr);
-            print_r($this->y_arr);
+            //print_r($this->x_arr);
+            //print_r($this->y_arr);
+            echo $this->sign . ltrim(implode('', array_reverse($this->suma)), '0');
         }
 
         public function init() {
@@ -110,9 +156,10 @@
                 $liczby = explode(' ', stream_get_line(STDIN, 20001, PHP_EOL));
                 $this->x = $liczby[0];
                 $this->y = $liczby[1];
+                $this->checkSigns();
                 $this->simpleMultiply();
-                if ($this->result) {
-                    echo $this->result . PHP_EOL;
+                if ($this->result !== false) {
+                    echo $this->sign . $this->result . PHP_EOL;
                 } else {
                     $this->splitNumbers();
                     $this->processNumbers();
